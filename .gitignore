@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Ambiente virtual
+backend/venv/
+.venv/
+env/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+*.local
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs e cache
+*.log
+.cache/
+.pytest_cache/
+
+# Cursor / assets temporários do workspace
+assets/
+
+# Publicação gradual (backup local — nao sobe no GitHub)
+_staging/
