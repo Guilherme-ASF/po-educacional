@@ -1,35 +1,45 @@
-# PO Educacional (em construção)
+# PO Educacional — v0.5.0 (Dualidade)
 
-Sistema web para ensinar Pesquisa Operacional — **versão inicial (esqueleto)**.
+Sistema web para ensinar Pesquisa Operacional com **método gráfico**, **Simplex pedagógico** e **painel primal-dual** (dualidade forte/fraca).
 
 ## O que funciona nesta versão
 
-- API FastAPI com rota de status (`GET /api/version`)
-- Interface React com campo de texto e botão (resolução ainda não implementada)
+- Parser e diagnóstico automático (v0.2+)
+- Método gráfico para PL com 2 variáveis (v0.3+)
+- Tableau Simplex passo a passo com frações (v0.4+)
+- **Novo:** formulação dual, resolução do dual e classificação de dualidade forte/fraca
+- Painel comparativo primal × dual na interface
 
 ## Instalação
 
 ### Backend
 
-```bash
+```powershell
 cd backend
 python -m venv venv
-venv\Scripts\activate
+.\venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8001
 ```
 
 ### Frontend
 
-```bash
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-Acesse http://localhost:5173
+Acesse **http://localhost:5173**
 
-## Próximos passos
+## Uso
 
-- Parser de entrada (formato matemático e simplificado)
-- Diagnóstico automático do tipo de problema
+1. Cole um problema PL no formato matemático.
+2. Escolha **Dualidade** para ver o painel primal-dual completo, ou **Simplex** / **Método Gráfico**.
+3. O relatório inclui o painel de dualidade mesmo quando outro método é o principal.
+
+## Próximas versões
+
+- v0.6.0 — Relaxação linear e Branch and Bound (PLI)
+- v0.7.0 — Branch and Cut e Algoritmo Genético
+- v0.8.0 — Lista MMOL, logo PPGCC e documentação final

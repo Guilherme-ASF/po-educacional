@@ -94,27 +94,6 @@ function MethodContent({
     return <SimplexTableView passos={(data.passos as []) ?? []} />
   }
 
-  if (metodo === 'Relaxação Linear' && resolucao?.relaxacao_linear) {
-    const data = resolucao.relaxacao_linear as Record<string, unknown>
-    const passos =
-      (data.passos_simplex as []) ??
-      (data.tabelas as unknown as []) ??
-      []
-    return (
-      <>
-        <p className="intro-text">
-          Relaxação linear (variáveis contínuas) resolvida por Simplex:
-        </p>
-        {passos.length > 0 && <SimplexTableView passos={passos} />}
-        <ul>
-          {(data.analise_integralidade as string[])?.map((a, i) => (
-            <li key={i}>{a}</li>
-          ))}
-        </ul>
-      </>
-    )
-  }
-
   if (metodo === 'Método Gráfico' && resolucao?.grafico) {
     const data = resolucao.grafico as Record<string, unknown>
     return (
@@ -134,62 +113,6 @@ function MethodContent({
           className="svg-wrap"
           dangerouslySetInnerHTML={{ __html: String(data.svg ?? '') }}
         />
-      </>
-    )
-  }
-
-  if (metodo === 'Branch and Bound' && resolucao?.branch_and_bound) {
-    const data = resolucao.branch_and_bound as Record<string, unknown>
-    return (
-      <>
-        {data.explicacao && <p>{String(data.explicacao)}</p>}
-        <pre className="tree">{String(data.arvore ?? '')}</pre>
-        {(data.passos as Array<Record<string, unknown>>)?.map((p, i) => (
-          <div key={i} className="step-card">
-            <h4>{String(p.titulo)}</h4>
-            <p>{String(p.descricao)}</p>
-          </div>
-        ))}
-      </>
-    )
-  }
-
-  if (
-    (metodo === 'Branch and Cut' || metodo === 'Planos de Corte (Gomory)') &&
-    resolucao?.branch_and_cut
-  ) {
-    const data = resolucao.branch_and_cut as Record<string, unknown>
-    return (
-      <>
-        {data.explicacao && <p>{String(data.explicacao)}</p>}
-        {(data.passos as Array<Record<string, unknown>>)?.map((p, i) => (
-          <div key={i} className="step-card">
-            <h4>{String(p.titulo)}</h4>
-            <p>{String(p.descricao)}</p>
-          </div>
-        ))}
-        {(data.cortes as Array<Record<string, unknown>>)?.map((c, i) => (
-          <div key={i} className="step-card">
-            <h4>Corte {String(c.iteracao)}</h4>
-            <ul>
-              {(c.calculos as string[])?.map((x, j) => (
-                <li key={j}>{x}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </>
-    )
-  }
-
-  if (metodo === 'Algoritmo Genético' && resolucao?.algoritmo_genetico) {
-    const data = resolucao.algoritmo_genetico as Record<string, unknown>
-    const melhor = data.melhor as Record<string, unknown>
-    return (
-      <>
-        <p>{String(data.codificacao)}</p>
-        <p>Parada: {String(data.criterio_parada)}</p>
-        <pre>{JSON.stringify(melhor?.solucao ?? {}, null, 2)}</pre>
       </>
     )
   }

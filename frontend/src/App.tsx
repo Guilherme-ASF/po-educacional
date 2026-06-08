@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { SolutionReport } from './components/SolutionReport'
 import ppgccLogo from './images/PPgCC-LOGO.png'
 import './App.css'
@@ -63,27 +63,16 @@ const METHODS = [
   { value: 'Método Gráfico', label: 'Método Gráfico' },
   { value: 'Simplex', label: 'Simplex' },
   { value: 'Dualidade', label: 'Dualidade' },
-  { value: 'Relaxação Linear', label: 'Relaxação Linear' },
-  { value: 'Branch and Bound', label: 'Branch and Bound' },
-  { value: 'Branch and Cut', label: 'Branch and Cut' },
-  { value: 'Planos de Corte (Gomory)', label: 'Planos de Corte (Gomory)' },
-  { value: 'Algoritmo Genético', label: 'Algoritmo Genético' },
 ]
 
 export default function App() {
   const [input, setInput] = useState(EXAMPLES.matematico)
   const [method, setMethod] = useState('')
-  const [populacao, setPopulacao] = useState(20)
-  const [geracoes, setGeracoes] = useState(30)
-  const [mutacao, setMutacao] = useState(0.15)
-  const [cruzamento, setCruzamento] = useState(0.8)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
   const [apiVersion, setApiVersion] = useState<string | null>(null)
   const [apiStatus, setApiStatus] = useState<'loading' | 'ok' | 'erro'>('loading')
-
-  const showGaParams = method === 'Algoritmo Genético' || method === ''
 
   useEffect(() => {
     fetch('/api/version')
@@ -108,16 +97,7 @@ export default function App() {
       const res = await fetch('/api/solve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input_text: input,
-          method: method || null,
-          ga_params: {
-            populacao,
-            geracoes,
-            mutacao,
-            cruzamento,
-          },
-        }),
+        body: JSON.stringify({ input_text: input, method: method || null }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.detail ?? 'Erro ao resolver')
@@ -162,7 +142,7 @@ export default function App() {
           </a>
         </div>
         <h1>PO Educacional</h1>
-        <p>Sistema tutor de Pesquisa Operacional — PL, PLI, Simplex, Branch &amp; Bound e mais</p>
+        <p>Sistema tutor de Pesquisa Operacional — método gráfico, Simplex e dualidade</p>
         <p className="api-version">
           {apiStatus === 'loading' && 'Conectando ao backend...'}
           {apiStatus === 'ok' && apiVersion && (
@@ -200,54 +180,6 @@ export default function App() {
               </option>
             ))}
           </select>
-
-          {showGaParams && (
-            <div className="ga-params">
-              <h3>Algoritmo Genético</h3>
-              <label>
-                População
-                <input
-                  type="number"
-                  min={4}
-                  max={200}
-                  value={populacao}
-                  onChange={(e) => setPopulacao(Number(e.target.value))}
-                />
-              </label>
-              <label>
-                Gerações
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={geracoes}
-                  onChange={(e) => setGeracoes(Number(e.target.value))}
-                />
-              </label>
-              <label>
-                Mutação (0–1)
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={mutacao}
-                  onChange={(e) => setMutacao(Number(e.target.value))}
-                />
-              </label>
-              <label>
-                Cruzamento (0–1)
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={cruzamento}
-                  onChange={(e) => setCruzamento(Number(e.target.value))}
-                />
-              </label>
-            </div>
-          )}
         </aside>
 
         <div className="workspace">
@@ -256,6 +188,7 @@ export default function App() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Digite o problema..."
             rows={14}
+            spellCheck={false}
           />
           <button className="solve-btn" onClick={handleSolve} disabled={loading}>
             {loading ? 'Resolvendo...' : 'Resolver com explicação completa'}
