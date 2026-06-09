@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { SolutionReport } from './components/SolutionReport'
 import ppgccLogo from './images/PPgCC-LOGO.png'
 import './App.css'
@@ -63,16 +63,62 @@ const METHODS = [
   { value: 'Método Gráfico', label: 'Método Gráfico' },
   { value: 'Simplex', label: 'Simplex' },
   { value: 'Dualidade', label: 'Dualidade' },
+  { value: 'Relaxação Linear', label: 'Relaxação Linear' },
+  { value: 'Branch and Bound', label: 'Branch and Bound' },
+  { value: 'Branch and Cut', label: 'Branch and Cut' },
+  { value: 'Planos de Corte (Gomory)', label: 'Planos de Corte (Gomory)' },
+  { value: 'Algoritmo Genético', label: 'Algoritmo Genético' },
 ]
+
+interface MmolProblem {
+  chave: string
+  id: number
+  titulo: string
+  tipo: string
+  metodo_sugerido: string
+}
 
 export default function App() {
   const [input, setInput] = useState(EXAMPLES.matematico)
+  const [mmolMode, setMmolMode] = useState(false)
+  const [mmolProblems, setMmolProblems] = useState<MmolProblem[]>([])
+  const [mmolKey, setMmolKey] = useState('')
   const [method, setMethod] = useState('')
+  const [populacao, setPopulacao] = useState(20)
+  const [geracoes, setGeracoes] = useState(30)
+  const [mutacao, setMutacao] = useState(0.15)
+  const [cruzamento, setCruzamento] = useState(0.8)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
   const [apiVersion, setApiVersion] = useState<string | null>(null)
   const [apiStatus, setApiStatus] = useState<'loading' | 'ok' | 'erro'>('loading')
+  const [mmolModelText, setMmolModelText] = useState('')
+  const [mmolModelLoading, setMmolModelLoading] = useState(false)
+
+  const showGaParams = method === 'Algoritmo Genético' || method === ''
+
+  const loadMmolModel = useCallback((chave: string) => {
+    if (!chave) return
+    setMmolModelLoading(true)
+    fetch('/api/mmol/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problema: chave }),
+    })
+      .then(async (r) => {
+        const j = await r.json()
+        if (!r.ok) throw new Error(String(j.detail ?? 'Erro ao carregar modelagem'))
+        return j
+      })
+      .then((j) => setMmolModelText(String(j.texto ?? '')))
+      .catch((e) =>
+        setMmolModelText(
+          e instanceof Error ? e.message : 'Não foi possível carregar a modelagem.',
+        ),
+      )
+      .finally(() => setMmolModelLoading(false))
+  }, [])
 
   useEffect(() => {
     fetch('/api/version')
@@ -88,16 +134,48 @@ export default function App() {
         setApiVersion(null)
         setApiStatus('erro')
       })
+
+    fetch('/api/mmol/problems')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j?.problemas) {
+          const lista = j.problemas as MmolProblem[]
+          setMmolProblems(lista)
+          if (lista.length > 0) {
+            setMmolKey(lista[0].chave)
+            setMethod(lista[0].metodo_sugerido)
+          }
+        }
+      })
+      .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (mmolMode && mmolKey) {
+      loadMmolModel(mmolKey)
+    }
+  }, [mmolMode, mmolKey, loadMmolModel])
 
   async function handleSolve() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/solve', {
+      const url = mmolMode ? '/api/mmol/solve' : '/api/solve'
+      const body = mmolMode
+        ? {
+            problema: mmolKey,
+            method: method || null,
+            input_text: mmolModelText,
+          }
+        : {
+            input_text: input,
+            method: method || null,
+            ga_params: { populacao, geracoes, mutacao, cruzamento },
+          }
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input_text: input, method: method || null }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.detail ?? 'Erro ao resolver')
@@ -142,7 +220,7 @@ export default function App() {
           </a>
         </div>
         <h1>PO Educacional</h1>
-        <p>Sistema tutor de Pesquisa Operacional — método gráfico, Simplex e dualidade</p>
+        <p>Sistema tutor de Pesquisa Operacional — PL, PLI, Simplex, Branch &amp; Bound e mais</p>
         <p className="api-version">
           {apiStatus === 'loading' && 'Conectando ao backend...'}
           {apiStatus === 'ok' && apiVersion && (
@@ -158,17 +236,44 @@ export default function App() {
 
       <main>
         <aside className="sidebar">
+          <h3>Lista MMOL</h3>
+          <label className="mmol-toggle">
+            <input
+              type="checkbox"
+              checked={mmolMode}
+              onChange={(e) => setMmolMode(e.target.checked)}
+            />
+            Problema da lista (10 modelos)
+          </label>
+          {mmolMode && mmolProblems.length > 0 && (
+            <select
+              className="mmol-select"
+              value={mmolKey}
+              onChange={(e) => {
+                setMmolKey(e.target.value)
+                const p = mmolProblems.find((x) => x.chave === e.target.value)
+                if (p) setMethod(p.metodo_sugerido)
+              }}
+            >
+              {mmolProblems.map((p) => (
+                <option key={p.chave} value={p.chave}>
+                  P{p.chave.split('_')[0]} — {p.titulo}
+                </option>
+              ))}
+            </select>
+          )}
+
           <h3>Exemplos</h3>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.matematico)}>
+          <button className="example-btn" onClick={() => setInput(EXAMPLES.matematico)} disabled={mmolMode}>
             PL — Formato Matemático
           </button>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.pli)}>
+          <button className="example-btn" onClick={() => setInput(EXAMPLES.pli)} disabled={mmolMode}>
             PLI — Variáveis inteiras
           </button>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.simplificado)}>
+          <button className="example-btn" onClick={() => setInput(EXAMPLES.simplificado)} disabled={mmolMode}>
             Formato Simplificado
           </button>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.natural)}>
+          <button className="example-btn" onClick={() => setInput(EXAMPLES.natural)} disabled={mmolMode}>
             Linguagem Natural
           </button>
 
@@ -180,16 +285,94 @@ export default function App() {
               </option>
             ))}
           </select>
+
+          {showGaParams && (
+            <div className="ga-params">
+              <h3>Algoritmo Genético</h3>
+              <label>
+                População
+                <input
+                  type="number"
+                  min={4}
+                  max={200}
+                  value={populacao}
+                  onChange={(e) => setPopulacao(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Gerações
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={geracoes}
+                  onChange={(e) => setGeracoes(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Mutação (0–1)
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={mutacao}
+                  onChange={(e) => setMutacao(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Cruzamento (0–1)
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={cruzamento}
+                  onChange={(e) => setCruzamento(Number(e.target.value))}
+                />
+              </label>
+            </div>
+          )}
         </aside>
 
         <div className="workspace">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Digite o problema..."
-            rows={14}
-            spellCheck={false}
-          />
+          {mmolMode ? (
+            <div className="mmol-panel">
+              <div className="mmol-instance-header">
+                <label className="mmol-field-label">Modelagem editável</label>
+                <button
+                  type="button"
+                  className="mmol-reset-btn"
+                  disabled={!mmolKey || mmolModelLoading}
+                  onClick={() => loadMmolModel(mmolKey)}
+                >
+                  Restaurar padrão
+                </button>
+              </div>
+              {mmolModelLoading && <p className="mmol-hint">Carregando modelagem...</p>}
+              <p className="mmol-hint">
+                Edite o bloco <strong>@dados</strong> (tempos e capacidade). Use{' '}
+                <strong>p(t,s)</strong> para dados fixos e <strong>x[t,s]</strong> para variáveis de
+                decisão (0 ou 1). Com <strong>Branch and Bound</strong> selecionado, a árvore é gerada.
+              </p>
+              <textarea
+                value={mmolModelText}
+                onChange={(e) => setMmolModelText(e.target.value)}
+                rows={16}
+                className="mmol-model-textarea"
+                spellCheck={false}
+                placeholder="Modelagem do problema..."
+              />
+            </div>
+          ) : (
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Digite o problema..."
+              rows={14}
+              spellCheck={false}
+            />
+          )}
           <button className="solve-btn" onClick={handleSolve} disabled={loading}>
             {loading ? 'Resolvendo...' : 'Resolver com explicação completa'}
           </button>

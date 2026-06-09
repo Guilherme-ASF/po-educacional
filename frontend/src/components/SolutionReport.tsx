@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { BranchBoundTree, type BBNode } from './BranchBoundTree'
 import { DualPanel } from './DualPanel'
 import { Latex } from './Latex'
 import { SimplexTableView } from './SimplexTable'
@@ -29,7 +30,11 @@ export function SolutionReport({ data }: Props) {
           <Badge label="Objetivo" value={String(diag?.objetivo ?? '')} />
           <Badge label="Variáveis" value={String(diag?.n_variaveis ?? '')} />
         </div>
-        <Latex tex={String(form?.latex ?? '')} block />
+        {form?.texto ? (
+          <pre className="model-text">{String(form.texto)}</pre>
+        ) : (
+          <Latex tex={String(form?.latex ?? '')} block />
+        )}
       </Section>
 
       <Section n={2} title={`Resolução — ${metodoPrincipal}`}>
@@ -41,21 +46,7 @@ export function SolutionReport({ data }: Props) {
       </Section>
 
       <Section n={3} title="Solução">
-        {vars && (
-          <div className="solution-box">
-            {Object.entries(vars).map(([k, v]) => (
-              <div key={k} className="sol-item">
-                <span className="sol-var">{k}</span>
-                <span className="sol-val">{Number(v).toFixed(4)}</span>
-              </div>
-            ))}
-            {z !== undefined && (
-              <div className="sol-z">
-                Z* = <strong>{Number(z).toFixed(4)}</strong>
-              </div>
-            )}
-          </div>
-        )}
+        {vars && <SolutionVars vars={vars} z={z} />}
         <p className="result-line">{String(conclusao?.resultado ?? '')}</p>
       </Section>
     </div>
@@ -82,6 +73,92 @@ function Badge({ label, value }: { label: string; value: string }) {
   )
 }
 
+function SolutionVars({ vars, z }: { vars: Record<string, number>; z?: number }) {
+  const entries = Object.entries(vars)
+  const active = entries.filter(([, v]) => Math.abs(Number(v)) > 1e-6)
+  const compact = entries.length > 14
+
+  if (compact) {
+    return (
+      <div className="solution-wrap">
+        <p className="solution-summary">
+          {active.length} variável(is) não nula(s) de {entries.length} no total.
+        </p>
+        <details className="solution-details">
+          <summary>Ver todas as variáveis</summary>
+          <div className="solution-box solution-box--scroll">
+            {entries.map(([k, v]) => (
+              <div key={k} className="sol-item">
+                <span className="sol-var">{k}</span>
+                <span className="sol-val">{Number(v).toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+        {z !== undefined && (
+          <div className="solution-box sol-z-row">
+            <div className="sol-z">
+              Z* = <strong>{Number(z).toFixed(4)}</strong>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="solution-box solution-grid">
+      {entries.map(([k, v]) => (
+        <div key={k} className="sol-item">
+          <span className="sol-var">{k}</span>
+          <span className="sol-val">{Number(v).toFixed(4)}</span>
+        </div>
+      ))}
+      {z !== undefined && (
+        <div className="sol-z">
+          Z* = <strong>{Number(z).toFixed(4)}</strong>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DedicatedSolverPanel({ resolucao }: { resolucao: Record<string, unknown> }) {
+  const keys = [
+    'multiprocessador_exato',
+    'bin_packing',
+    'tsp_exato',
+    'cutting_stock',
+    'timetabling',
+  ] as const
+  const key = keys.find((k) => resolucao[k])
+  if (!key) return null
+
+  const data = resolucao[key] as Record<string, unknown>
+  const nota = resolucao.nota ? String(resolucao.nota) : ''
+
+  return (
+    <div className="step-card dedicated-solver-card">
+      <h4>Solver dedicado MMOL</h4>
+      <p>
+        <strong>Método:</strong> {String(data.metodo ?? '—')}
+      </p>
+      {Object.entries(data)
+        .filter(([k]) => k !== 'metodo')
+        .map(([k, v]) => (
+          <p key={k}>
+            <strong>{k}:</strong> {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+          </p>
+        ))}
+      {nota && <p className="hint">{nota}</p>}
+      <p className="hint">
+        Este problema usa algoritmo especializado na instância padrão; a árvore Branch &amp; Bound
+        não é gerada aqui.
+      </p>
+    </div>
+  )
+}
+
 function MethodContent({
   resolucao,
   metodo,
@@ -89,9 +166,40 @@ function MethodContent({
   resolucao: Record<string, unknown>
   metodo: string
 }) {
+  if (
+    resolucao?.multiprocessador_exato ||
+    resolucao?.bin_packing ||
+    resolucao?.tsp_exato ||
+    resolucao?.cutting_stock ||
+    resolucao?.timetabling
+  ) {
+    return <DedicatedSolverPanel resolucao={resolucao} />
+  }
+
   if (metodo === 'Simplex' && resolucao?.simplex) {
     const data = resolucao.simplex as Record<string, unknown>
     return <SimplexTableView passos={(data.passos as []) ?? []} />
+  }
+
+  if (metodo === 'Relaxação Linear' && resolucao?.relaxacao_linear) {
+    const data = resolucao.relaxacao_linear as Record<string, unknown>
+    const passos =
+      (data.passos_simplex as []) ??
+      (data.tabelas as unknown as []) ??
+      []
+    return (
+      <>
+        <p className="intro-text">
+          Relaxação linear (variáveis contínuas) resolvida por Simplex:
+        </p>
+        {passos.length > 0 && <SimplexTableView passos={passos} />}
+        <ul>
+          {(data.analise_integralidade as string[])?.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      </>
+    )
   }
 
   if (metodo === 'Método Gráfico' && resolucao?.grafico) {
@@ -113,6 +221,84 @@ function MethodContent({
           className="svg-wrap"
           dangerouslySetInnerHTML={{ __html: String(data.svg ?? '') }}
         />
+      </>
+    )
+  }
+
+  if (metodo === 'Branch and Bound' && resolucao?.branch_and_bound) {
+    const data = resolucao.branch_and_bound as Record<string, unknown>
+    const nos = (data.nos as BBNode[]) ?? []
+    return (
+      <>
+        {data.explicacao && <p className="intro-text">{String(data.explicacao)}</p>}
+        {nos.length > 0 ? (
+          <BranchBoundTree
+            nos={nos}
+            noOtimo={data.no_otimo as number | null | undefined}
+          />
+        ) : (
+          <pre className="tree">{String(data.arvore ?? '')}</pre>
+        )}
+        <details className="bb-steps-detail">
+          <summary>Passos detalhados do algoritmo</summary>
+          {(data.passos as Array<Record<string, unknown>>)?.map((p, i) => (
+            <div key={i} className="step-card">
+              <h4>{String(p.titulo)}</h4>
+              <p>{String(p.descricao)}</p>
+            </div>
+          ))}
+        </details>
+      </>
+    )
+  }
+
+  if (
+    (metodo === 'Branch and Cut' || metodo === 'Planos de Corte (Gomory)') &&
+    resolucao?.branch_and_cut
+  ) {
+    const data = resolucao.branch_and_cut as Record<string, unknown>
+    const nos = (data.nos as BBNode[]) ?? []
+    return (
+      <>
+        {data.explicacao && <p className="intro-text">{String(data.explicacao)}</p>}
+        {nos.length > 0 && (
+          <BranchBoundTree
+            nos={nos}
+            noOtimo={data.no_otimo as number | null | undefined}
+            nota={data.nota_arvore ? String(data.nota_arvore) : undefined}
+          />
+        )}
+        {(data.cortes as Array<Record<string, unknown>>)?.map((c, i) => (
+          <div key={i} className="step-card">
+            <h4>Corte {String(c.iteracao)}</h4>
+            <ul>
+              {(c.calculos as string[])?.map((x, j) => (
+                <li key={j}>{x}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        <details className="bb-steps-detail">
+          <summary>Passos detalhados (B&C)</summary>
+          {(data.passos as Array<Record<string, unknown>>)?.map((p, i) => (
+            <div key={i} className="step-card">
+              <h4>{String(p.titulo)}</h4>
+              <p>{String(p.descricao)}</p>
+            </div>
+          ))}
+        </details>
+      </>
+    )
+  }
+
+  if (metodo === 'Algoritmo Genético' && resolucao?.algoritmo_genetico) {
+    const data = resolucao.algoritmo_genetico as Record<string, unknown>
+    const melhor = data.melhor as Record<string, unknown>
+    return (
+      <>
+        <p>{String(data.codificacao)}</p>
+        <p>Parada: {String(data.criterio_parada)}</p>
+        <pre>{JSON.stringify(melhor?.solucao ?? {}, null, 2)}</pre>
       </>
     )
   }
