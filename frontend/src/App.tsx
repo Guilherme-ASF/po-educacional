@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ModelingGuide } from './components/ModelingGuide'
 import { SolutionReport } from './components/SolutionReport'
 import ppgccLogo from './images/PPgCC-LOGO.png'
 import './App.css'
@@ -95,8 +96,12 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState<'loading' | 'ok' | 'erro'>('loading')
   const [mmolModelText, setMmolModelText] = useState('')
   const [mmolModelLoading, setMmolModelLoading] = useState(false)
+  const [inputKind, setInputKind] = useState<'pl' | 'pli' | 'simplificado' | 'natural' | 'custom'>(
+    'pl',
+  )
 
   const showGaParams = method === 'Algoritmo Genético' || method === ''
+  const showModelingGuide = !mmolMode && inputKind !== 'natural'
 
   const loadMmolModel = useCallback((chave: string) => {
     if (!chave) return
@@ -264,16 +269,44 @@ export default function App() {
           )}
 
           <h3>Exemplos</h3>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.matematico)} disabled={mmolMode}>
+          <button
+            className="example-btn"
+            onClick={() => {
+              setInput(EXAMPLES.matematico)
+              setInputKind('pl')
+            }}
+            disabled={mmolMode}
+          >
             PL — Formato Matemático
           </button>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.pli)} disabled={mmolMode}>
+          <button
+            className="example-btn"
+            onClick={() => {
+              setInput(EXAMPLES.pli)
+              setInputKind('pli')
+            }}
+            disabled={mmolMode}
+          >
             PLI — Variáveis inteiras
           </button>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.simplificado)} disabled={mmolMode}>
+          <button
+            className="example-btn"
+            onClick={() => {
+              setInput(EXAMPLES.simplificado)
+              setInputKind('simplificado')
+            }}
+            disabled={mmolMode}
+          >
             Formato Simplificado
           </button>
-          <button className="example-btn" onClick={() => setInput(EXAMPLES.natural)} disabled={mmolMode}>
+          <button
+            className="example-btn"
+            onClick={() => {
+              setInput(EXAMPLES.natural)
+              setInputKind('natural')
+            }}
+            disabled={mmolMode}
+          >
             Linguagem Natural
           </button>
 
@@ -350,11 +383,7 @@ export default function App() {
                 </button>
               </div>
               {mmolModelLoading && <p className="mmol-hint">Carregando modelagem...</p>}
-              <p className="mmol-hint">
-                Edite o bloco <strong>@dados</strong> (tempos e capacidade). Use{' '}
-                <strong>p(t,s)</strong> para dados fixos e <strong>x[t,s]</strong> para variáveis de
-                decisão (0 ou 1). Com <strong>Branch and Bound</strong> selecionado, a árvore é gerada.
-              </p>
+              <ModelingGuide variant="mmol" />
               <textarea
                 value={mmolModelText}
                 onChange={(e) => setMmolModelText(e.target.value)}
@@ -365,13 +394,19 @@ export default function App() {
               />
             </div>
           ) : (
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Digite o problema..."
-              rows={14}
-              spellCheck={false}
-            />
+            <>
+              {showModelingGuide && <ModelingGuide variant="standard" />}
+              <textarea
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value)
+                  if (inputKind !== 'natural') setInputKind('custom')
+                }}
+                placeholder="Digite o problema (PL, PLI, ∀, Σ, x[t,s], p[t,s]…)..."
+                rows={14}
+                spellCheck={false}
+              />
+            </>
           )}
           <button className="solve-btn" onClick={handleSolve} disabled={loading}>
             {loading ? 'Resolvendo...' : 'Resolver com explicação completa'}

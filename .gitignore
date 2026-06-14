@@ -28,6 +28,7 @@ Thumbs.db
 *.log
 .cache/
 .pytest_cache/
+frontend/tsconfig.tsbuildinfo
 
 # Cursor / assets temporários do workspace
 assets/

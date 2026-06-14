@@ -1,9 +1,0 @@
-backend/app/pedagogical/dual.py
-backend/app/orchestrator.py
-backend/app/main.py
-frontend/src/components/DualPanel.tsx
-frontend/src/components/DualPanel.css
-frontend/src/components/SolutionReport.tsx
-frontend/src/App.tsx
-frontend/src/App.css
-README.md

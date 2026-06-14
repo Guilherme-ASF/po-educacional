@@ -1,0 +1,47 @@
+[
+  {
+    "id": "caso1",
+    "metodo": "Branch and Bound",
+    "ok": true,
+    "z_obtido": 40.0,
+    "z_esperado": 40.0,
+    "variaveis": {
+      "x1": 5.0,
+      "x2": 0.0
+    },
+    "desempenho": {
+      "nos_explorados": 7,
+      "nos_total": 7,
+      "tempo_ms": 1.88
+    }
+  },
+  {
+    "id": "caso2",
+    "metodo": "Método Gráfico",
+    "ok": true,
+    "z_obtido": 9.0,
+    "z_esperado": 9.0,
+    "variaveis": {
+      "x1": 1.0,
+      "x2": 3.0
+    },
+    "desempenho": {}
+  },
+  {
+    "id": "caso3",
+    "metodo": "Branch and Bound",
+    "ok": true,
+    "z_obtido": 42.0,
+    "z_esperado": 42.0,
+    "variaveis": {
+      "x1": 1.0,
+      "x2": 4.0,
+      "x3": 0.0
+    },
+    "desempenho": {
+      "nos_explorados": 1,
+      "nos_total": 1,
+      "tempo_ms": 0.66
+    }
+  }
+]

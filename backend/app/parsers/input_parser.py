@@ -13,6 +13,8 @@ from app.models.problem import (
 
 
 def detect_input_format(text: str) -> Literal["mathematical", "simplified", "natural"]:
+    if "@modelo" in text or "@dados" in text:
+        return "mathematical"
     lower = text.lower()
     natural_keywords = [
         "desejo",
@@ -28,8 +30,11 @@ def detect_input_format(text: str) -> Literal["mathematical", "simplified", "nat
         "cada produto",
         "unidades",
     ]
-    normalized = lower.replace(" ", "")
-    if any(k in lower for k in natural_keywords) and "x1" not in normalized:
+    prose = "\n".join(
+        ln for ln in lower.splitlines() if not ln.strip().startswith("#")
+    )
+    normalized = prose.replace(" ", "")
+    if any(k in prose for k in natural_keywords) and "x1" not in normalized:
         return "natural"
     if re.search(r"x\d+\s*\*", text) or re.search(r"\*\s*x\d+", text):
         return "simplified"
@@ -37,10 +42,14 @@ def detect_input_format(text: str) -> Literal["mathematical", "simplified", "nat
 
 
 def parse_problem(text: str) -> ProblemModel:
+    from app.parsers.model_dsl import expand_model_dsl
+    from app.parsers.summation_expander import expand_summations
+
     fmt = detect_input_format(text)
     if fmt == "natural":
         return _parse_natural(text)
-    return _parse_structured(text)
+    expanded = expand_summations(expand_model_dsl(text))
+    return _parse_structured(expanded)
 
 
 def _parse_structured(text: str) -> ProblemModel:
@@ -53,10 +62,14 @@ def _parse_structured(text: str) -> ProblemModel:
     obj_found = False
 
     for line in lines:
+        if line.strip().startswith("#"):
+            continue
         lower = line.lower()
         if re.match(r"^s\.?\s*a\.?\s*\.?$", lower):
             continue
         if lower.startswith("sujeito"):
+            continue
+        if re.match(r"^∀", line.strip()):
             continue
 
         if not obj_found and re.search(r"(max|min|z\s*=)", lower):
@@ -69,23 +82,13 @@ def _parse_structured(text: str) -> ProblemModel:
             obj_found = True
             continue
 
-        if re.search(r"(<=|>=|=|≤|≥)", line):
-            if "," in line and re.search(r"(>=|≥)\s*0", line) and "<=" not in line.replace(">=", ""):
-                for part in line.split(","):
-                    part = part.strip()
-                    if not part:
-                        continue
-                    cst, vnames, vtypes = _parse_constraint_line(part)
-                    var_names |= vnames
-                    var_types.update(vtypes)
-                    if cst:
-                        constraints.append(cst)
-                continue
-            cst, vnames, vtypes = _parse_constraint_line(line)
-            if cst:
-                constraints.append(cst)
-                var_names |= vnames
-                var_types.update(vtypes)
+        cst, vnames, vtypes = _parse_constraint_line(line)
+        if vnames:
+            var_names |= vnames
+        if vtypes:
+            var_types.update(vtypes)
+        if cst:
+            constraints.append(cst)
 
     if not var_names:
         raise ValueError("Nenhuma variável identificada no problema.")
@@ -110,52 +113,50 @@ def _parse_constraint_line(line: str) -> tuple[Constraint | None, set[str], dict
     var_names: set[str] = set()
     var_types: dict[str, VariableType] = {}
 
+    var_list_pat = r"([a-zA-Z][a-zA-Z0-9_]+(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]+)*)"
+
     int_line = re.search(
-        r"(x[\d_]+(?:\s*,\s*x[\d_]+)*)\s*(?:inteiro|inteiros|∈\s*Z|integer)",
+        rf"{var_list_pat}\s*(?:inteiro|inteiros|∈\s*Z|integer)",
         line,
         re.I,
     )
     if int_line:
-        for v in re.findall(r"x[\d_]+", int_line.group(1)):
-            vn = _normalize_var_name(v)
-            var_names.add(vn)
-            var_types[vn] = VariableType.INTEGER
+        for v in _extract_var_names(int_line.group(1)):
+            var_names.add(v)
+            var_types[v] = VariableType.INTEGER
         return None, var_names, var_types
 
     bin_line = re.search(
-        r"(x[\d_]+(?:\s*,\s*x[\d_]+)*)\s*(?:bin[aá]rio|binary|∈\s*\{0,1\})",
+        rf"{var_list_pat}\s*(?:bin[aá]rio|binary|∈\s*\{{0,1\}})",
         line,
         re.I,
     )
     if bin_line:
-        for v in re.findall(r"x[\d_]+", bin_line.group(1)):
-            vn = _normalize_var_name(v)
-            var_names.add(vn)
-            var_types[vn] = VariableType.BINARY
+        for v in _extract_var_names(bin_line.group(1)):
+            var_names.add(v)
+            var_types[v] = VariableType.BINARY
         return None, var_names, var_types
 
     nonneg = re.match(
-        r"^(x[\d_]+(?:\s*,\s*x[\d_]+)*)\s*(?:>=|≥)\s*0\s*$",
+        rf"^{var_list_pat}\s*(?:>=|≥)\s*0\s*$",
         line,
         re.I,
     )
     if nonneg:
-        for v in re.findall(r"x[\d_]+", nonneg.group(1)):
-            vn = _normalize_var_name(v)
-            var_names.add(vn)
-            var_types.setdefault(vn, VariableType.CONTINUOUS)
+        for v in _extract_var_names(nonneg.group(1)):
+            var_names.add(v)
+            var_types.setdefault(v, VariableType.CONTINUOUS)
         return None, var_names, var_types
 
     int_match = re.search(
-        r"(x[\d_]+(?:\s*,\s*x[\d_]+)*)\s*(?:∈|in)\s*(?:Z|ℤ|Int|Integer|Inteiro)",
+        rf"{var_list_pat}\s*(?:∈|in)\s*(?:Z|ℤ|Int|Integer|Inteiro)",
         line,
         re.I,
     )
     if int_match:
-        for v in re.findall(r"x[\d_]+", int_match.group(1)):
-            vn = _normalize_var_name(v)
-            var_names.add(vn)
-            var_types[vn] = VariableType.INTEGER
+        for v in _extract_var_names(int_match.group(1)):
+            var_names.add(v)
+            var_types[v] = VariableType.INTEGER
         return None, var_names, var_types
 
     sense_match = re.search(r"(<=|>=|=|≤|≥)", line)
@@ -254,18 +255,20 @@ def _parse_natural(text: str) -> ProblemModel:
     )
 
 
-def _parse_linear_expression(expr: str) -> tuple[dict[str, float], set[str]]:
-    expr = expr.replace("−", "-").replace("–", "-")
-    expr = re.sub(r"(\d)(x)", r"\1*\2", expr)
-    expr = expr.replace(" ", "")
-    expr = re.sub(r"x_(\d+)", r"x\1", expr)
+_VAR_TOKEN = r"[a-zA-Z][a-zA-Z0-9_]*"
 
-    terms = re.findall(r"([+-]?[\d\.]*\*?x\d+)", expr)
+
+def _parse_linear_expression(expr: str) -> tuple[dict[str, float], set[str]]:
+    expr = expr.replace("−", "-").replace("–", "-").replace("·", "*")
+    expr = re.sub(r"(\d)([a-zA-Z])", r"\1*\2", expr)
+    compact = expr.replace(" ", "")
+
+    terms = re.findall(rf"([+-]?(?:\d+\.?\d*|\.\d+)?\*?(?:{_VAR_TOKEN}))", compact)
     if not terms:
-        terms = re.split(r"([+-])", expr)
+        parts = re.split(r"([+-])", compact)
         rebuilt: list[str] = []
         sign = "+"
-        for t in terms:
+        for t in parts:
             if t in "+-":
                 sign = t
             elif t:
@@ -280,24 +283,34 @@ def _parse_linear_expression(expr: str) -> tuple[dict[str, float], set[str]]:
         if not term:
             continue
         sign = -1.0 if term.startswith("-") else 1.0
-        term = term.lstrip("+-")
-        term = term.replace("*", "")
-        m = re.match(r"([\d\.]*)x(\d+)", term)
+        term = term.lstrip("+-").replace("*", "")
+        m = re.match(rf"([\d\.]*)({_VAR_TOKEN})$", term)
         if m:
-            coef_str, idx = m.groups()
+            coef_str, name = m.groups()
             coef = float(coef_str) if coef_str else 1.0
-            name = f"x{idx}"
+            name = _normalize_var_name(name)
             var_names.add(name)
             coeffs[name] = coeffs.get(name, 0.0) + sign * coef
 
     return coeffs, var_names
 
 
+def _extract_var_names(fragment: str) -> list[str]:
+    return [_normalize_var_name(v) for v in re.findall(_VAR_TOKEN, fragment)]
+
+
 def _normalize_var_name(name: str) -> str:
-    m = re.match(r"x_?(\d+)", name)
-    return f"x{m.group(1)}" if m else name
+    m = re.match(r"x_?(\d+)$", name)
+    if m and "_" not in name.replace("x_", "x"):
+        return f"x{m.group(1)}"
+    return name
 
 
-def _var_sort_key(name: str) -> int:
+def _var_sort_key(name: str) -> tuple:
+    m = re.match(r"x_?([a-zA-Z]+)(\d+)_([a-zA-Z]+)(\d+)$", name)
+    if m:
+        return (m.group(1), int(m.group(2)), m.group(3), int(m.group(4)))
     m = re.match(r"x(\d+)", name)
-    return int(m.group(1)) if m else 0
+    if m:
+        return ("", int(m.group(1)), "", 0)
+    return (name.lower(), 0, "", 0)

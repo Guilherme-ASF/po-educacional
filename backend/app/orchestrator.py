@@ -7,6 +7,7 @@ from app.models.problem import ProblemModel, VariableType
 from app.parsers.input_parser import detect_input_format, parse_problem
 from app.pedagogical.dual import build_dual
 from app.pedagogical.formatter import interpret_problem, model_to_latex, model_to_text
+from app.models.problem import ProblemModel
 from app.solvers.branch_bound import BranchBoundSolver
 from app.solvers.branch_cut import BranchCutSolver
 from app.solvers.genetic import GeneticSolver
@@ -216,24 +217,72 @@ def _wants_branch_bound_tree(metodo: str) -> bool:
     )
 
 
+def _mmol_formulation_text(chave: str, inst: dict, problem: ProblemModel) -> str:
+    from app.problems.mmol_text import mmol_to_text
+
+    try:
+        return mmol_to_text(chave, inst)
+    except ValueError:
+        return model_to_text(problem)
+
+
+_MMOL_COMPACT_KEYS = frozenset(
+    {
+        "2_selecao_projetos",
+        "3_knapsack_multidimensional",
+        "4_bin_packing",
+        "5_setup_producao",
+        "6_set_covering",
+        "7_tsp",
+        "8_facility_location",
+        "9_cutting_stock",
+        "10_timetabling",
+    }
+)
+_MMOL_DEDICATED_KEYS = frozenset(
+    {"4_bin_packing", "7_tsp", "9_cutting_stock", "10_timetabling"}
+)
+
+
+def _route_mmol_solve(
+    chave: str,
+    problem: ProblemModel,
+    meta: dict,
+    inst: dict,
+    metodo: str,
+    mmol_meta: dict,
+) -> dict:
+    use_bb_tree = _wants_branch_bound_tree(metodo)
+    if chave == "1_multiprocessador" and use_bb_tree:
+        return solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+    if chave in _MMOL_DEDICATED_KEYS and use_bb_tree:
+        return solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+    if chave in _MMOL_DEDICATED_KEYS:
+        return _solve_mmol_dedicated(chave, problem, meta, inst, metodo, mmol_meta)
+    if chave == "1_multiprocessador":
+        return _solve_mmol_dedicated(chave, problem, meta, inst, metodo, mmol_meta)
+    return solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+
+
 def solve_mmol(
     chave: str,
     dados: dict | None = None,
     method: str | None = None,
     input_text: str | None = None,
 ) -> dict:
-    from app.problems.registry import build_model, get_problem
+    from app.problems.registry import build_model, get_problem, instance_to_json, normalize_instance
     from app.parsers.input_parser import parse_problem
 
     meta = get_problem(chave)
-    inst = dados if dados is not None else meta["instancia_padrao"]
+    inst_raw = dados if dados is not None else meta["instancia_padrao"]
+    inst = normalize_instance(inst_raw)
     metodo = method or meta["metodo_sugerido"]
     mmol_meta = {
         "chave": chave,
         "id": meta["id"],
         "titulo": meta["titulo"],
         "tipo": meta["tipo"],
-        "instancia": inst,
+        "instancia": instance_to_json(inst_raw),
     }
 
     if input_text and input_text.strip():
@@ -242,7 +291,7 @@ def solve_mmol(
             from app.problems.multiprocessor_text import extract_instance_from_text
 
             inst_edit = extract_instance_from_text(texto) or inst
-            mmol_meta["instancia"] = inst_edit
+            mmol_meta["instancia"] = instance_to_json(inst_edit)
             if _wants_branch_bound_tree(metodo):
                 problem = parse_problem(texto)
                 result = solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
@@ -255,6 +304,15 @@ def solve_mmol(
             result["mmol"] = mmol_meta
             return result
 
+        if chave in _MMOL_COMPACT_KEYS:
+            problem = build_model(chave, inst)
+            result = _route_mmol_solve(
+                chave, problem, meta, inst, metodo, mmol_meta
+            )
+            result["2_formulacao"]["texto"] = texto
+            result["mmol"] = mmol_meta
+            return result
+
         problem = parse_problem(texto)
         result = solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
         result["2_formulacao"]["texto"] = texto
@@ -262,28 +320,12 @@ def solve_mmol(
         return result
 
     problem = build_model(chave, dados)
+    result = _route_mmol_solve(chave, problem, meta, inst, metodo, mmol_meta)
 
-    dedicated = (
-        "4_bin_packing",
-        "7_tsp",
-        "9_cutting_stock",
-        "10_timetabling",
-    )
-    use_bb_multiprocessor = (
-        chave == "1_multiprocessador" and _wants_branch_bound_tree(metodo)
-    )
-    if chave in dedicated:
-        result = _solve_mmol_dedicated(chave, problem, meta, inst, metodo, mmol_meta)
-    elif use_bb_multiprocessor:
-        result = solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
-        from app.problems.multiprocessor_text import multiprocessor_to_text
-
-        result["2_formulacao"]["texto"] = multiprocessor_to_text(inst)
-    elif chave == "1_multiprocessador":
-        result = _solve_mmol_dedicated(chave, problem, meta, inst, metodo, mmol_meta)
-    else:
-        result = solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
-
+    if "2_formulacao" in result and chave in _MMOL_COMPACT_KEYS:
+        result["2_formulacao"]["texto"] = _mmol_formulation_text(
+            chave, inst, problem
+        )
     result["mmol"] = mmol_meta
     return result
 
@@ -339,11 +381,7 @@ def _solve_mmol_dedicated(
         f"({metodo})."
     )
 
-    texto = model_to_text(problem)
-    if chave == "1_multiprocessador":
-        from app.problems.multiprocessor_text import multiprocessor_to_text
-
-        texto = multiprocessor_to_text(inst)
+    texto = _mmol_formulation_text(chave, inst, problem)
 
     return {
         "1_identificacao": {
@@ -494,6 +532,88 @@ def _run_branch_bound(problem: ProblemModel, response: dict) -> tuple[dict, floa
     return bb.solution, bb.optimal_value
 
 
+def _bb_tree_max_nodes(n_vars: int) -> int:
+    """Limite de nós para a árvore pedagógica (visualização no B&C)."""
+    if n_vars <= 14:
+        return 500
+    if n_vars <= 40:
+        return 1200
+    return 3000
+
+
+class _BranchCutTreeDisplay:
+    """Envelope mínimo para serializar o único nó da árvore B&C."""
+
+    def __init__(
+        self,
+        nodes: list,
+        *,
+        optimal_node_id: int | None,
+        optimal_value: float | None,
+        incumbent_node_ids: list[int],
+    ):
+        self.nodes = nodes
+        self.optimal_node_id = optimal_node_id
+        self.optimal_value = optimal_value
+        self.incumbent_node_ids = incumbent_node_ids
+
+
+def _build_branch_cut_bb_display(
+    bc,
+    problem: ProblemModel,
+    *,
+    integer_sol: dict[str, float] | None = None,
+    integer_z: float | None = None,
+):
+    """Árvore B&C: raiz com relaxação após os cortes."""
+    from app.solvers.branch_bound import BBNode
+
+    fr = bc.final_relaxation or {}
+    relax_sol = fr.get("solution") or bc.solution or {}
+    z_relax = fr.get("z") if fr.get("z") is not None else bc.optimal_value
+    passos = fr.get("passos_simplex") or []
+
+    node = BBNode(id=0, parent_id=None, depth=0)
+    node.relaxation = {
+        "solution": relax_sol,
+        "z": z_relax,
+        "passos_simplex": passos,
+    }
+    node.z_relax = z_relax
+
+    has_integer = (
+        integer_sol
+        and integer_z is not None
+        and _is_integer_solution(integer_sol, problem)
+    )
+    is_integer = bool(relax_sol) and _is_integer_solution(relax_sol, problem)
+
+    if has_integer:
+        node.integer_solution = integer_sol
+        node.z_integer = integer_z
+        node.status = "integer"
+    elif bc.status == "optimal" and is_integer:
+        node.integer_solution = relax_sol
+        node.z_integer = z_relax
+        node.status = "integer"
+
+    n_cortes = len(bc.cuts)
+    tree_ascii = f"Nó 0\n└── Raiz após {n_cortes} corte(s) de Gomory"
+    if has_integer or (is_integer and z_relax is not None):
+        z_show = integer_z if has_integer else z_relax
+        tree_ascii += f" [Z*={z_show:.4g}]"
+    elif z_relax is not None:
+        tree_ascii += f" [relaxação Z={z_relax:.4g}]"
+
+    bb = _BranchCutTreeDisplay(
+        [node],
+        optimal_node_id=0 if (has_integer or (bc.status == "optimal" and is_integer)) else None,
+        optimal_value=integer_z if has_integer else (z_relax if is_integer else None),
+        incumbent_node_ids=[0] if (has_integer or (bc.status == "optimal" and is_integer)) else [],
+    )
+    return node, bb, tree_ascii
+
+
 def _run_branch_cut(problem: ProblemModel, response: dict) -> tuple[dict, float | None]:
     if not problem.has_integer_vars():
         s = SimplexSolver(problem).solve()
@@ -519,30 +639,63 @@ def _run_branch_cut(problem: ProblemModel, response: dict) -> tuple[dict, float 
         return s.solution, s.optimal_value
 
     bc = BranchCutSolver(problem).solve()
-    bb = None
-    if problem.n_vars <= 12:
-        bb = BranchBoundSolver(problem, max_nodes=500).solve()
+    primary_sol = bc.solution
+    primary_z = bc.optimal_value
+    solucao_bb_fallback = False
+
+    if (
+        not primary_sol
+        or primary_z is None
+        or bc.status != "optimal"
+        or not _is_integer_solution(primary_sol, problem)
+    ):
+        bb_fb = BranchBoundSolver(
+            problem, max_nodes=_bb_tree_max_nodes(problem.n_vars)
+        ).solve()
+        if bb_fb.solution and bb_fb.optimal_value is not None:
+            primary_sol = bb_fb.solution
+            primary_z = bb_fb.optimal_value
+            solucao_bb_fallback = True
+
+    _, bb, tree_ascii = _build_branch_cut_bb_display(
+        bc,
+        problem,
+        integer_sol=primary_sol if solucao_bb_fallback else None,
+        integer_z=primary_z if solucao_bb_fallback else None,
+    )
+    n_cortes = len(bc.cuts)
+    node = bb.nodes[0]
+    explicacao = (
+        f"Foram adicionados {n_cortes} corte(s) de Gomory ao modelo. "
+        "A árvore mostra a relaxação na raiz após esses cortes."
+    )
+    if solucao_bb_fallback:
+        explicacao += (
+            " A solução inteira ótima (Z* abaixo) foi obtida por Branch & Bound, "
+            "pois os cortes pedagógicos simplificados não fecham o poliedro inteiro."
+        )
+
     response["4_resolucao"]["branch_and_cut"] = {
         "passos": bc.steps,
         "cortes": [_cut_to_dict(c) for c in bc.cuts],
-        "nos": [_node_to_dict(n, bb, problem) for n in bb.nodes] if bb else [],
-        "no_otimo": bb.optimal_node_id if bb else None,
-        "incumbentes": bb.incumbent_node_ids if bb else [],
+        "nos": [_node_to_dict(node, bb, problem)],
+        "no_otimo": bb.optimal_node_id,
+        "incumbentes": bb.incumbent_node_ids,
+        "arvore": tree_ascii,
+        "z_relaxacao_raiz": node.z_relax,
+        "explicacao": explicacao,
         "desempenho": {
-            "nos_explorados": (
-                sum(1 for n in bb.nodes if n.relaxation is not None or n.prune_reason)
-                if bb
-                else 0
-            ),
-            "nos_total": len(bb.nodes) if bb else 0,
-            "cortes": len(bc.cuts),
+            "nos_explorados": 1,
+            "nos_total": 1,
+            "cortes": n_cortes,
+            "solucao_via_bb": solucao_bb_fallback,
         },
         "nota_arvore": (
-            "Árvore de ramificação (B&B) exibida para visualização; "
-            "a solução principal usa cortes de Gomory (B&C)."
+            "Nó raiz: relaxação linear após os cortes listados acima. "
+            "Compare com Branch and Bound (sem cortes) para ver a diferença de tamanho."
         ),
     }
-    return bc.solution, bc.optimal_value
+    return primary_sol, primary_z
 
 
 def _run_genetic(
@@ -686,7 +839,7 @@ def _step_dict(s) -> dict:
 
 def _node_to_dict(n, bb, problem: ProblemModel) -> dict:
     relax = n.relaxation or {}
-    sol = relax.get("solution") or n.integer_solution or {}
+    sol = n.integer_solution or relax.get("solution") or {}
     return {
         "id": n.id,
         "rotulo": f"PL_{n.id + 1}",

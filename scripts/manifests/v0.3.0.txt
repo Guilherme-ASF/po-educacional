@@ -1,7 +1,0 @@
-backend/app/solvers/graphical.py
-backend/app/solvers/vertex_lp.py
-backend/app/orchestrator.py
-backend/app/main.py
-frontend/src/components/SolutionReport.tsx
-frontend/src/App.tsx
-README.md

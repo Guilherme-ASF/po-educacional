@@ -4,9 +4,12 @@ import copy
 from dataclasses import dataclass, field
 
 from app.models.problem import Constraint, ObjectiveSense, ProblemModel, VariableType
-from app.solvers.serialize import simplex_steps_to_dict
+from app.solvers.serialize import lp_solution_step_dict, simplex_steps_to_dict
 from app.solvers.simplex import SimplexSolver
 from app.solvers.vertex_lp import solve_by_vertices
+
+# Acima deste limite: só resumo scipy (evita tableaux gigantes e Simplex incorreto).
+_MAX_SIMPLEX_PEDAGOGY_VARS = 14
 
 
 @dataclass
@@ -307,56 +310,79 @@ class BranchBoundSolver:
 
         prob = self._build_problem(node)
         sx_prob = self._build_simplex_problem(node)
-        passos_simplex: list[dict] = []
+
+        sol: dict[str, float] | None = None
+        z: float | None = None
+        simplex_steps: list[dict] | None = None
 
         try:
             lp = solve_lp_relaxation(prob)
             if lp is not None:
                 sol, z = lp
-                return {
-                    "status": "optimal",
-                    "solution": sol,
-                    "z": z,
-                    "passos_simplex": passos_simplex,
-                }
         except Exception:
             pass
 
-        try:
-            sx = SimplexSolver(sx_prob).solve()
-            if sx.status == "optimal":
-                passos_simplex = simplex_steps_to_dict(sx.steps)
-        except Exception:
-            pass
+        if sol is None and prob.n_vars <= _MAX_SIMPLEX_PEDAGOGY_VARS:
+            try:
+                sx = SimplexSolver(sx_prob).solve()
+                if (
+                    sx.status == "optimal"
+                    and sx.solution
+                    and sx.optimal_value is not None
+                ):
+                    sol, z = sx.solution, sx.optimal_value
+                    if sx.steps:
+                        simplex_steps = simplex_steps_to_dict(sx.steps)
+            except Exception:
+                pass
 
-        try:
-            if prob.n_vars <= 8:
+        if sol is None and prob.n_vars <= 8:
+            try:
                 vertex = solve_by_vertices(prob)
                 if vertex is not None:
                     sol, z = vertex
-                    return {
-                        "status": "optimal",
-                        "solution": sol,
-                        "z": z,
-                        "passos_simplex": passos_simplex,
-                    }
-        except Exception:
-            pass
+            except Exception:
+                pass
+
+        if sol is None or z is None:
+            return {"status": "infeasible", "passos_simplex": []}
+
+        if simplex_steps is not None:
+            passos_simplex = simplex_steps
+        else:
+            passos_simplex = self._build_node_passos(sx_prob, prob, sol, z)
+        return {
+            "status": "optimal",
+            "solution": sol,
+            "z": z,
+            "passos_simplex": passos_simplex,
+        }
+
+    def _build_node_passos(
+        self,
+        sx_prob: ProblemModel,
+        prob: ProblemModel,
+        sol: dict[str, float],
+        z: float,
+    ) -> list[dict]:
+        """Tableau pedagógico: Simplex só em modelos pequenos e se concordar com scipy."""
+        if prob.n_vars > _MAX_SIMPLEX_PEDAGOGY_VARS:
+            return [lp_solution_step_dict(sol, z, prob)]
 
         try:
             sx = SimplexSolver(sx_prob).solve()
-            if sx.status == "optimal" and sx.optimal_value is not None:
-                if not passos_simplex:
-                    passos_simplex = simplex_steps_to_dict(sx.steps)
-                return {
-                    "status": "optimal",
-                    "solution": sx.solution,
-                    "z": sx.optimal_value,
-                    "passos_simplex": passos_simplex,
-                }
+            if (
+                sx.status == "optimal"
+                and sx.optimal_value is not None
+                and sx.solution
+                and abs(sx.optimal_value - z) < 1e-3
+                and sx.steps
+            ):
+                return simplex_steps_to_dict(sx.steps)
         except Exception:
             pass
-        return {"status": "infeasible", "passos_simplex": passos_simplex}
+
+        return [lp_solution_step_dict(sol, z, prob)]
 
     def _integrality_analysis(self, sol: dict[str, float]) -> list[str]:
         lines = []

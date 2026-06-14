@@ -261,13 +261,6 @@ function MethodContent({
     return (
       <>
         {data.explicacao && <p className="intro-text">{String(data.explicacao)}</p>}
-        {nos.length > 0 && (
-          <BranchBoundTree
-            nos={nos}
-            noOtimo={data.no_otimo as number | null | undefined}
-            nota={data.nota_arvore ? String(data.nota_arvore) : undefined}
-          />
-        )}
         {(data.cortes as Array<Record<string, unknown>>)?.map((c, i) => (
           <div key={i} className="step-card">
             <h4>Corte {String(c.iteracao)}</h4>
@@ -278,6 +271,17 @@ function MethodContent({
             </ul>
           </div>
         ))}
+        {nos.length > 0 ? (
+          <BranchBoundTree
+            nos={nos}
+            noOtimo={data.no_otimo as number | null | undefined}
+            nota={data.nota_arvore ? String(data.nota_arvore) : undefined}
+          />
+        ) : data.arvore ? (
+          <pre className="tree">{String(data.arvore)}</pre>
+        ) : (
+          <p className="hint">Árvore de ramificação não disponível para este tamanho de modelo.</p>
+        )}
         <details className="bb-steps-detail">
           <summary>Passos detalhados (B&C)</summary>
           {(data.passos as Array<Record<string, unknown>>)?.map((p, i) => (
