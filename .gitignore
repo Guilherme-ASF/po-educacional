@@ -34,3 +34,5 @@ assets/
 
 # Publicação gradual (backup local — nao sobe no GitHub)
 _staging/
+_dev_snapshot/
+_pre_publish/

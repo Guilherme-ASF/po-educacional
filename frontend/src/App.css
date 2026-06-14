@@ -1,7 +1,8 @@
-﻿.app {
-  max-width: 1200px;
+.app {
+  max-width: min(1200px, 100%);
   margin: 0 auto;
   padding: 1.5rem;
+  overflow-x: hidden;
 }
 
 header {
@@ -92,8 +93,9 @@ header p {
 
 main {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 1.5rem;
+  max-width: 100%;
 }
 
 .sidebar {
@@ -137,8 +139,15 @@ select {
   border-radius: 8px;
 }
 
+.workspace {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 .workspace textarea {
   width: 100%;
+  max-width: 100%;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 12px;
@@ -177,6 +186,8 @@ select {
 
 .report {
   margin-top: 2rem;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .section {
@@ -185,6 +196,8 @@ select {
   padding: 1.25rem;
   margin-bottom: 1rem;
   border: 1px solid #334155;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .section h2 {
@@ -330,6 +343,169 @@ th {
   font-family: monospace;
   white-space: pre;
   color: #86efac;
+}
+
+.bb-steps-detail {
+  margin-top: 1.25rem;
+}
+
+.bb-steps-detail summary {
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.mmol-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: #cbd5e1;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.mmol-select {
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.45rem;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+}
+
+.mmol-panel {
+  max-width: 100%;
+}
+
+.mmol-field-label {
+  display: block;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mmol-block {
+  margin-bottom: 1rem;
+}
+
+.mmol-model-textarea,
+.mmol-instance-textarea,
+textarea.readonly {
+  font-family: 'Consolas', 'Courier New', monospace;
+  line-height: 1.55;
+  max-height: 280px;
+  overflow: auto;
+  resize: vertical;
+}
+
+.mmol-model-textarea {
+  min-height: 280px;
+}
+
+.mmol-instance-textarea {
+  min-height: 140px;
+}
+
+.mmol-instance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.mmol-reset-btn {
+  background: #334155;
+  border: 1px solid #475569;
+  color: #e2e8f0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mmol-reset-btn:hover:not(:disabled) {
+  background: #475569;
+}
+
+.mmol-reset-btn:disabled {
+  opacity: 0.5;
+}
+
+.mmol-hint {
+  color: #64748b;
+  font-size: 0.88rem;
+  margin: 0 0 0.5rem;
+}
+
+.mmol-error {
+  color: #fca5a5;
+  background: #7f1d1d44;
+  padding: 0.6rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  margin: 0.5rem 0 0;
+}
+
+.model-text {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.88rem;
+  padding: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 360px;
+  max-width: 100%;
+  margin: 0;
+}
+
+.solution-wrap {
+  max-width: 100%;
+}
+
+.solution-box--scroll {
+  display: block;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.solution-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.solution-summary {
+  color: #94a3b8;
+  font-size: 0.88rem;
+  margin: 0 0 0.5rem;
+}
+
+.solution-details summary {
+  cursor: pointer;
+  color: #60a5fa;
+  font-size: 0.88rem;
+  margin-bottom: 0.5rem;
+}
+
+.sol-z-row {
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.dedicated-solver-card {
+  border-left-color: #8b5cf6;
 }
 
 .result {

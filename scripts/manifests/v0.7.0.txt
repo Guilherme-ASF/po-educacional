@@ -1,0 +1,6 @@
+backend/app/solvers/branch_cut.py
+backend/app/solvers/genetic.py
+backend/app/orchestrator.py
+frontend/src/components/SolutionReport.tsx
+frontend/src/App.tsx
+README.md

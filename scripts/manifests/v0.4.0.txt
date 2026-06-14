@@ -1,0 +1,11 @@
+backend/app/solvers/simplex.py
+backend/app/solvers/fractions_util.py
+backend/app/orchestrator.py
+frontend/src/components/SimplexTable.tsx
+frontend/src/components/SimplexTable.css
+frontend/src/components/DataTable.tsx
+frontend/src/components/SolutionReport.tsx
+frontend/src/App.tsx
+frontend/package.json
+frontend/package-lock.json
+README.md
