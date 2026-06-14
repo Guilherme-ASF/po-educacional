@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { BranchBoundTree, type BBNode } from './BranchBoundTree'
+import { GeneticPanel } from './GeneticPanel'
 import { DualPanel } from './DualPanel'
 import { Latex } from './Latex'
 import { SimplexTableView } from './SimplexTable'
@@ -166,6 +167,11 @@ function MethodContent({
   resolucao: Record<string, unknown>
   metodo: string
 }) {
+  if (metodo === 'Algoritmo Genético' && resolucao?.algoritmo_genetico) {
+    const data = resolucao.algoritmo_genetico as Record<string, unknown>
+    return <GeneticPanel data={data} />
+  }
+
   if (
     resolucao?.multiprocessador_exato ||
     resolucao?.bin_packing ||
@@ -291,18 +297,6 @@ function MethodContent({
             </div>
           ))}
         </details>
-      </>
-    )
-  }
-
-  if (metodo === 'Algoritmo Genético' && resolucao?.algoritmo_genetico) {
-    const data = resolucao.algoritmo_genetico as Record<string, unknown>
-    const melhor = data.melhor as Record<string, unknown>
-    return (
-      <>
-        <p>{String(data.codificacao)}</p>
-        <p>Parada: {String(data.criterio_parada)}</p>
-        <pre>{JSON.stringify(melhor?.solucao ?? {}, null, 2)}</pre>
       </>
     )
   }

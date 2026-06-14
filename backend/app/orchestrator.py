@@ -217,6 +217,16 @@ def _wants_branch_bound_tree(metodo: str) -> bool:
     )
 
 
+def _wants_educational_solver(metodo: str) -> bool:
+    """Métodos que devem usar o orquestrador pedagógico (não solver dedicado MMOL)."""
+    return metodo in (
+        "Algoritmo Genético",
+        "Simplex",
+        "Relaxação Linear",
+        "Dualidade",
+    )
+
+
 def _mmol_formulation_text(chave: str, inst: dict, problem: ProblemModel) -> str:
     from app.problems.mmol_text import mmol_to_text
 
@@ -251,17 +261,19 @@ def _route_mmol_solve(
     inst: dict,
     metodo: str,
     mmol_meta: dict,
+    ga_params: dict | None = None,
 ) -> dict:
     use_bb_tree = _wants_branch_bound_tree(metodo)
-    if chave == "1_multiprocessador" and use_bb_tree:
-        return solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
-    if chave in _MMOL_DEDICATED_KEYS and use_bb_tree:
-        return solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+    use_educational = use_bb_tree or _wants_educational_solver(metodo)
+    if chave == "1_multiprocessador" and use_educational:
+        return solve_educational_model(problem, metodo, ga_params, mmol_meta=mmol_meta)
+    if chave in _MMOL_DEDICATED_KEYS and use_educational:
+        return solve_educational_model(problem, metodo, ga_params, mmol_meta=mmol_meta)
     if chave in _MMOL_DEDICATED_KEYS:
         return _solve_mmol_dedicated(chave, problem, meta, inst, metodo, mmol_meta)
     if chave == "1_multiprocessador":
         return _solve_mmol_dedicated(chave, problem, meta, inst, metodo, mmol_meta)
-    return solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+    return solve_educational_model(problem, metodo, ga_params, mmol_meta=mmol_meta)
 
 
 def solve_mmol(
@@ -269,6 +281,7 @@ def solve_mmol(
     dados: dict | None = None,
     method: str | None = None,
     input_text: str | None = None,
+    ga_params: dict | None = None,
 ) -> dict:
     from app.problems.registry import build_model, get_problem, instance_to_json, normalize_instance
     from app.parsers.input_parser import parse_problem
@@ -276,7 +289,7 @@ def solve_mmol(
     meta = get_problem(chave)
     inst_raw = dados if dados is not None else meta["instancia_padrao"]
     inst = normalize_instance(inst_raw)
-    metodo = method or meta["metodo_sugerido"]
+    metodo = _normalize_method(method) or meta["metodo_sugerido"]
     mmol_meta = {
         "chave": chave,
         "id": meta["id"],
@@ -292,9 +305,13 @@ def solve_mmol(
 
             inst_edit = extract_instance_from_text(texto) or inst
             mmol_meta["instancia"] = instance_to_json(inst_edit)
-            if _wants_branch_bound_tree(metodo):
-                problem = parse_problem(texto)
-                result = solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+            use_educational = _wants_branch_bound_tree(metodo) or _wants_educational_solver(metodo)
+            if use_educational:
+                if _wants_branch_bound_tree(metodo):
+                    problem = parse_problem(texto)
+                else:
+                    problem = build_model(chave, inst_edit)
+                result = solve_educational_model(problem, metodo, ga_params, mmol_meta=mmol_meta)
             else:
                 problem = build_model(chave, inst_edit)
                 result = _solve_mmol_dedicated(
@@ -307,20 +324,20 @@ def solve_mmol(
         if chave in _MMOL_COMPACT_KEYS:
             problem = build_model(chave, inst)
             result = _route_mmol_solve(
-                chave, problem, meta, inst, metodo, mmol_meta
+                chave, problem, meta, inst, metodo, mmol_meta, ga_params
             )
             result["2_formulacao"]["texto"] = texto
             result["mmol"] = mmol_meta
             return result
 
         problem = parse_problem(texto)
-        result = solve_educational_model(problem, metodo, mmol_meta=mmol_meta)
+        result = solve_educational_model(problem, metodo, ga_params, mmol_meta=mmol_meta)
         result["2_formulacao"]["texto"] = texto
         result["mmol"] = mmol_meta
         return result
 
     problem = build_model(chave, dados)
-    result = _route_mmol_solve(chave, problem, meta, inst, metodo, mmol_meta)
+    result = _route_mmol_solve(chave, problem, meta, inst, metodo, mmol_meta, ga_params)
 
     if "2_formulacao" in result and chave in _MMOL_COMPACT_KEYS:
         result["2_formulacao"]["texto"] = _mmol_formulation_text(
@@ -698,31 +715,44 @@ def _run_branch_cut(problem: ProblemModel, response: dict) -> tuple[dict, float 
     return primary_sol, primary_z
 
 
+def _normalize_ga_params(ga_params: dict | None) -> dict:
+    p = ga_params or {}
+    return {
+        "populacao": max(2, int(p.get("populacao", 10))),
+        "geracoes": max(1, int(p.get("geracoes", 20))),
+        "mutacao": float(p.get("mutacao", 0.1)),
+        "cruzamento": float(p.get("cruzamento", 0.8)),
+        "seed": int(p.get("seed", 42)),
+    }
+
+
 def _run_genetic(
     problem: ProblemModel,
     response: dict,
     ga_params: dict,
     set_primary: bool,
 ) -> tuple[dict, float | None]:
+    params = _normalize_ga_params(ga_params)
     ga = GeneticSolver(
         problem,
-        population_size=int(ga_params.get("populacao", 10)),
-        max_generations=int(ga_params.get("geracoes", 20)),
-        mutation_rate=float(ga_params.get("mutacao", 0.1)),
-        crossover_rate=float(ga_params.get("cruzamento", 0.8)),
-        seed=int(ga_params.get("seed", 42)),
+        population_size=params["populacao"],
+        max_generations=params["geracoes"],
+        mutation_rate=params["mutacao"],
+        crossover_rate=params["cruzamento"],
+        seed=params["seed"],
     ).solve()
 
     response["4_resolucao"]["algoritmo_genetico"] = {
         "parametros": {
-            "populacao": ga_params.get("populacao", 10),
-            "geracoes": ga_params.get("geracoes", 20),
-            "mutacao": ga_params.get("mutacao", 0.1),
-            "cruzamento": ga_params.get("cruzamento", 0.8),
+            "populacao": params["populacao"],
+            "geracoes": params["geracoes"],
+            "mutacao": params["mutacao"],
+            "cruzamento": params["cruzamento"],
         },
         "codificacao": ga.encoding,
         "geracoes": [_gen_to_dict(g) for g in ga.generations],
         "criterio_parada": ga.stop_reason,
+        "melhor_geracao": ga.best_generation,
         "melhor": {"solucao": ga.best_solution, "fitness": ga.best_fitness},
     }
 
@@ -932,6 +962,7 @@ def _cut_to_dict(c) -> dict:
 
 
 def _gen_to_dict(g) -> dict:
+    eventos = getattr(g, "events", []) or []
     return {
         "geracao": g.generation,
         "populacao": [
@@ -941,6 +972,12 @@ def _gen_to_dict(g) -> dict:
         "melhor": {"cromossomo": g.best.chromosome, "fitness": g.best.fitness},
         "fitness_medio": g.avg_fitness,
         "operacoes": g.operations,
+        "eventos": eventos,
+        "stats": {
+            "n_selecoes": sum(1 for e in eventos if e.get("tipo") == "selecao"),
+            "n_cruzamentos": sum(1 for e in eventos if e.get("tipo") == "cruzamento"),
+            "n_mutacoes": sum(1 for e in eventos if e.get("tipo") == "mutacao"),
+        },
     }
 
 

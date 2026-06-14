@@ -166,16 +166,18 @@ export default function App() {
     setError('')
     try {
       const url = mmolMode ? '/api/mmol/solve' : '/api/solve'
+      const gaBody = { populacao, geracoes, mutacao, cruzamento }
       const body = mmolMode
         ? {
             problema: mmolKey,
             method: method || null,
             input_text: mmolModelText,
+            ga_params: gaBody,
           }
         : {
             input_text: input,
             method: method || null,
-            ga_params: { populacao, geracoes, mutacao, cruzamento },
+            ga_params: gaBody,
           }
       const res = await fetch(url, {
         method: 'POST',

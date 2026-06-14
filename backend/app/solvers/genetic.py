@@ -20,6 +20,7 @@ class GAGeneration:
     best: GAIndividual
     avg_fitness: float
     operations: list[str] = field(default_factory=list)
+    events: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -27,6 +28,7 @@ class GeneticResult:
     status: str
     best_solution: dict[str, float]
     best_fitness: float
+    best_generation: int
     generations: list[GAGeneration]
     encoding: str
     stop_reason: str
@@ -65,27 +67,46 @@ class GeneticSolver:
             "Codificação: cada cromossomo é um vetor de genes inteiros [x1, x2, ..., xn].",
             f"População inicial: {self.pop_size} indivíduos gerados aleatoriamente.",
         ]
-        generations.append(self._record_gen(0, pop, gen0_ops))
+        generations.append(self._record_gen(0, pop, gen0_ops, []))
 
         best = max(pop, key=lambda x: x.fitness)
-        no_improve = 0
+        best_generation = 0
 
         for g in range(1, self.max_gen + 1):
             ops: list[str] = []
+            events: list[dict] = []
             new_pop: list[GAIndividual] = [max(pop, key=lambda x: x.fitness)]
 
             while len(new_pop) < self.pop_size:
                 p1 = self._tournament_select(pop)
                 p2 = self._tournament_select(pop)
-                ops.append(f"Seleção por torneio: Pai 1 = {p1.chromosome}, Pai 2 = {p2.chromosome}")
+                sel = f"Seleção por torneio: Pai 1 = {p1.chromosome}, Pai 2 = {p2.chromosome}"
+                ops.append(sel)
+                events.append({
+                    "tipo": "selecao",
+                    "pai1": p1.chromosome[:],
+                    "pai2": p2.chromosome[:],
+                    "fitness_pai1": p1.fitness,
+                    "fitness_pai2": p2.fitness,
+                })
 
                 if random.random() < self.crossover_rate:
                     point = random.randint(1, len(self.var_names) - 1) if len(self.var_names) > 1 else 1
                     c1 = p1.chromosome[:point] + p2.chromosome[point:]
                     c2 = p2.chromosome[:point] + p1.chromosome[point:]
-                    ops.append(f"Cruzamento (ponto {point}): Filho 1 = {c1}, Filho 2 = {c2}")
+                    cr = f"Cruzamento (ponto {point}): Filho 1 = {c1}, Filho 2 = {c2}"
+                    ops.append(cr)
+                    events.append({
+                        "tipo": "cruzamento",
+                        "ponto": point,
+                        "pai1": p1.chromosome[:],
+                        "pai2": p2.chromosome[:],
+                        "filho1": c1[:],
+                        "filho2": c2[:],
+                    })
                 else:
                     c1, c2 = p1.chromosome[:], p2.chromosome[:]
+                    events.append({"tipo": "sem_cruzamento", "descricao": "Pais copiados sem crossover"})
 
                 for chrom in [c1, c2]:
                     mutated = chrom[:]
@@ -94,26 +115,31 @@ class GeneticSolver:
                             lo, hi = bounds[self.var_names[i]]
                             old = mutated[i]
                             mutated[i] = random.randint(lo, hi)
-                            ops.append(f"Mutação: gene {i} ({self.var_names[i]}): {old} → {mutated[i]}")
+                            mut = f"Mutação: gene {i} ({self.var_names[i]}): {old} → {mutated[i]}"
+                            ops.append(mut)
+                            events.append({
+                                "tipo": "mutacao",
+                                "indice": i,
+                                "variavel": self.var_names[i],
+                                "antes": old,
+                                "depois": mutated[i],
+                            })
                     ind = GAIndividual(chromosome=mutated)
                     ind.fitness, ind.feasible = self._evaluate(mutated)
                     new_pop.append(ind)
 
             pop = new_pop[: self.pop_size]
             gen_best = max(pop, key=lambda x: x.fitness)
-            generations.append(self._record_gen(g, pop, ops))
+            generations.append(self._record_gen(g, pop, ops, events))
 
             if gen_best.fitness > best.fitness + 1e-6:
                 best = gen_best
-                no_improve = 0
-            else:
-                no_improve += 1
-                if no_improve >= 5:
-                    break
+                best_generation = g
 
-        stop = f"{len(generations) - 1} gerações" if len(generations) < self.max_gen + 1 else f"{self.max_gen} gerações"
-        if no_improve >= 5:
-            stop += " (parada: sem melhoria por 5 gerações)"
+        stop = (
+            f"{self.max_gen} gerações evolutivas (+ população inicial), "
+            f"população {self.pop_size}, mutação {self.mutation_rate}, cruzamento {self.crossover_rate}"
+        )
 
         solution = {
             self.var_names[i]: float(best.chromosome[i]) for i in range(len(self.var_names))
@@ -123,6 +149,7 @@ class GeneticSolver:
             status="completed",
             best_solution=solution,
             best_fitness=best.fitness,
+            best_generation=best_generation,
             generations=generations,
             encoding="Vetor inteiro [x1, x2, ..., xn] — cada gene é o valor de uma variável.",
             stop_reason=stop,
@@ -163,7 +190,20 @@ class GeneticSolver:
         candidates = random.sample(pop, min(k, len(pop)))
         return max(candidates, key=lambda x: x.fitness)
 
-    def _record_gen(self, gen: int, pop: list[GAIndividual], ops: list[str]) -> GAGeneration:
+    def _record_gen(
+        self,
+        gen: int,
+        pop: list[GAIndividual],
+        ops: list[str],
+        events: list[dict],
+    ) -> GAGeneration:
         best = max(pop, key=lambda x: x.fitness)
         avg = sum(p.fitness for p in pop) / len(pop)
-        return GAGeneration(generation=gen, population=pop[:], best=best, avg_fitness=avg, operations=ops)
+        return GAGeneration(
+            generation=gen,
+            population=pop[:],
+            best=best,
+            avg_fitness=avg,
+            operations=ops,
+            events=events,
+        )

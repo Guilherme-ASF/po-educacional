@@ -76,8 +76,9 @@ def mmol_solve(body: dict):
     dados = body.get("dados")
     method = body.get("method")
     input_text = body.get("input_text")
+    ga_params = body.get("ga_params") or {}
     try:
-        result = solve_mmol(chave, dados, method, input_text)
+        result = solve_mmol(chave, dados, method, input_text, ga_params)
         result["api_versao"] = API_VERSION
         return result
     except ValueError as e:
