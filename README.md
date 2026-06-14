@@ -51,6 +51,131 @@ Abra **http://localhost:5173** (o Vite faz proxy para a API em `8001`).
 
 ---
 
+## Bibliotecas utilizadas
+
+### Backend (Python)
+
+| Biblioteca | Versão | Papel no projeto |
+|------------|--------|------------------|
+| [FastAPI](https://fastapi.tiangolo.com/) | 0.115.6 | API REST (`/api/solve`, `/api/mmol/*`) |
+| [Uvicorn](https://www.uvicorn.org/) | 0.34.0 | Servidor ASGI do backend |
+| [NumPy](https://numpy.org/) | 2.2.1 | Álgebra linear (tableau, vértices, manipulação numérica) |
+| [SciPy](https://scipy.org/) (`optimize.linprog`) | 1.17.1 | Relaxação LP nos subproblemas B&B/B&C (HiGHS) |
+| [python-multipart](https://github.com/Kludex/python-multipart) | 0.0.20 | Suporte a formulários multipart no FastAPI |
+
+**Biblioteca padrão Python** (sem instalação extra): `re`, `dataclasses`, `copy`, `functools`, `math`, `time`, `typing`.
+
+**Implementação própria (sem dependência externa de PLI):** Simplex pedagógico, Branch and Bound, Branch and Cut (Gomory), método gráfico, algoritmo genético, parsers e builders MMOL.
+
+### Frontend (JavaScript / TypeScript)
+
+| Biblioteca | Versão | Papel no projeto |
+|------------|--------|------------------|
+| [React](https://react.dev/) | 18.3.1 | Interface (editor, relatório, árvore B&B) |
+| [React DOM](https://react.dev/) | 18.3.1 | Renderização no navegador |
+| [Vite](https://vite.dev/) | 6.0.5 | Dev server, build e proxy para API |
+| [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react) | 4.3.4 | Suporte JSX/TSX no Vite |
+| [TypeScript](https://www.typescriptlang.org/) | 5.6.2 | Tipagem estática do frontend |
+| [KaTeX](https://katex.org/) | 0.16.11 | Renderização de fórmulas LaTeX na UI |
+
+**Dev:** `@types/react`, `@types/react-dom`, `@types/katex` — definições de tipos TypeScript.
+
+### O que não usamos
+
+CPLEX, Gurobi, OR-Tools, GLPK, PuLP, Pyomo ou qualquer solver MIP comercial/integrado como caixa-preta para PLI.
+
+---
+
+## Parser e modelagem dos problemas
+
+O sistema converte texto em um `ProblemModel` interno (objetivo, restrições, tipos de variável) por **três caminhos**, conforme a origem da entrada:
+
+```mermaid
+flowchart TD
+  A[Texto do usuário] --> B{Modo MMOL?}
+  B -->|Sim, problemas 2–10| C[build_model em Python]
+  B -->|Sim, problema 1 editável| D[extract_instance_from_text]
+  D --> E[expand_model_dsl + expand_summations]
+  E --> F[parse_problem]
+  B -->|Não / PL livre| G[detect_input_format]
+  G -->|natural| H[_parse_natural]
+  G -->|matemático| E
+  F --> I[ProblemModel]
+  H --> I
+  C --> I
+  I --> J[orchestrator → solvers]
+```
+
+### 1. Modo livre — `input_parser.py`
+
+1. **`detect_input_format`** — classifica a entrada:
+   - **natural** — frases (“maximizar lucro…”, “produto A…”); ignora linhas `#` comentário.
+   - **simplificado** — coeficientes colados (`8x1`, `x1*5`).
+   - **matemático** — `Max/Min Z = …`, restrições explícitas.
+   - Textos com `@dados` / `@modelo` (MMOL) nunca são tratados como linguagem natural.
+
+2. **`parse_problem`** — pipeline principal:
+   ```
+   texto → expand_model_dsl → expand_summations → _parse_structured
+   ```
+   ou `_parse_natural` quando aplicável.
+
+3. **`_parse_structured`** — lê linha a linha (regex):
+   - objetivo (`Max`/`Min`/`Z =`);
+   - restrições (`<=`, `>=`, `=`);
+   - domínio (`binário`, `inteiro`, `>= 0`);
+   - ignora comentários `#` e linhas `∀` (já expandidas antes).
+
+### 2. DSL compacto — `model_dsl.py` + `summation_expander.py`
+
+Usado principalmente no **problema 1 (multiprocessador)** quando o usuário edita `@dados`:
+
+| Bloco | Conteúdo |
+|-------|----------|
+| `@dados` | tarefas, servidores, capacidade `C`, tempos `p(t,s)` |
+| `@modelo` | formulação com `∀` e `Σ` (referência pedagógica) |
+| `@dominio` | tipos das variáveis |
+
+- **`expand_model_dsl`** — lê `@dados` e gera PL expandido com variáveis `x_{t,s}`, makespan `M` e comentários com os tempos.
+- **`expand_summations`** — expande notação indexada, por exemplo:
+  - `∀ t: Σ_s x_{t,s} = 1` → uma equação por tarefa;
+  - `∀ s: Σ_t p[t,s]·x_{t,s} ≤ C` → uma restrição por servidor.
+
+### 3. Lista MMOL — `problems/` + `mmol_text.py`
+
+Para os **10 problemas da disciplina**, a modelagem na interface vem de **`mmol_to_text`**: texto compacto com `@dados`, `@modelo`, `@dominio`, comentários e símbolos `∀`/`Σ`.
+
+Na resolução, o backend **não re-parseia** esse texto (exceto P1 com B&B editável). Usa **`build_model(chave, instancia)`** — builders Python em `problems/*.py` que montam o `ProblemModel` diretamente:
+
+| Módulo | Problema |
+|--------|----------|
+| `multiprocessor.py` | 1 — alocação multiprocessador |
+| `project_selection.py` | 2 — seleção de projetos |
+| `knapsack_md.py` | 3 — knapsack multidimensional |
+| `bin_packing.py` | 4 — bin packing |
+| `production_setup.py` | 5 — setup de produção |
+| `set_covering.py` | 6 — set covering |
+| `tsp.py` | 7 — TSP (MTZ) |
+| `facility_location.py` | 8 — facility location |
+| `cutting_stock.py` | 9 — cutting stock (padrões gerados) |
+| `timetabling.py` | 10 — grade de horários |
+
+`registry.py` centraliza instâncias padrão, normalização JSON (`instance_to_json`) e roteamento.
+
+### 4. Saída pedagógica — `pedagogical/formatter.py`
+
+- **`model_to_text`** — PL expandido (fallback ou problemas sem DSL compacto).
+- **`model_to_latex`** — mesma modelagem em LaTeX para o frontend (KaTeX).
+
+### Fluxo resumido (MMOL)
+
+```
+GET /api/mmol/model  →  mmol_to_text  →  editor (texto comentado)
+POST /api/mmol/solve →  build_model   →  orchestrator  →  B&B / B&C / solver dedicado
+```
+
+---
+
 ## Uso rápido
 
 ### Modo livre (PL / PLI)
