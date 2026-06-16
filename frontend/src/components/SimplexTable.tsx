@@ -228,7 +228,7 @@ function TableauGrid({
             {headers.map((h, ci) => (
               <th
                 key={ci}
-                className={cellClass(ci, -1, entIdx, pivColIdx, leaving, '', mode, true, false)}
+                className={cellClass(ci, entIdx, pivColIdx, undefined, '', mode, true, false)}
               >
                 {h}
                 {mode === 'before' && ci === entIdx && ci > 0 && (

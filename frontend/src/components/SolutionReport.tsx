@@ -166,7 +166,7 @@ function MethodContent({
 }: {
   resolucao: Record<string, unknown>
   metodo: string
-}) {
+}): JSX.Element {
   if (metodo === 'Algoritmo Genético' && resolucao?.algoritmo_genetico) {
     const data = resolucao.algoritmo_genetico as Record<string, unknown>
     return <GeneticPanel data={data} />
