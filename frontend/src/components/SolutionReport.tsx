@@ -23,6 +23,11 @@ export function SolutionReport({ data }: Props) {
   const vars = sol?.variaveis as Record<string, number> | undefined
   const z = sol?.valor_objetivo as number | undefined
 
+  const hasDuality =
+    typeof resolucao?.dualidade === 'object' &&
+    resolucao.dualidade !== null &&
+    metodoPrincipal !== 'Dualidade'
+
   return (
     <div className="report report-simple">
       <Section n={1} title="Problema">
@@ -41,9 +46,7 @@ export function SolutionReport({ data }: Props) {
       <Section n={2} title={`Resolução — ${metodoPrincipal}`}>
         <p className="method-note">{String(metodo?.justificativa ?? '')}</p>
         <MethodContent resolucao={resolucao} metodo={metodoPrincipal} />
-        {resolucao?.dualidade && metodoPrincipal !== 'Dualidade' && (
-          <DualPanel data={resolucao.dualidade as Record<string, unknown>} />
-        )}
+        {hasDuality && <DualPanel data={resolucao.dualidade as Record<string, unknown>} />}
       </Section>
 
       <Section n={3} title="Solução">
