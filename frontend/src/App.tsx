@@ -71,6 +71,13 @@ const METHODS = [
   { value: 'Algoritmo Genético', label: 'Algoritmo Genético' },
 ]
 
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined) ??
+  'https://po-educacional-production-5497.up.railway.app'
+
+const apiFetch = (path: string, init?: RequestInit) =>
+  fetch(`${API_BASE}${path}`, init)
+
 interface MmolProblem {
   chave: string
   id: number
@@ -106,7 +113,7 @@ export default function App() {
   const loadMmolModel = useCallback((chave: string) => {
     if (!chave) return
     setMmolModelLoading(true)
-    fetch('/api/mmol/model', {
+    apiFetch('/api/mmol/model', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ problema: chave }),
@@ -126,7 +133,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/version')
+    apiFetch('/api/version')
       .then((r) => {
         if (!r.ok) throw new Error('offline')
         return r.json()
@@ -140,7 +147,7 @@ export default function App() {
         setApiStatus('erro')
       })
 
-    fetch('/api/mmol/problems')
+    apiFetch('/api/mmol/problems')
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (j?.problemas) {
@@ -179,7 +186,7 @@ export default function App() {
             method: method || null,
             ga_params: gaBody,
           }
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
