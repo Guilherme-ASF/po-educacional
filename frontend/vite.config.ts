@@ -11,4 +11,9 @@ export default defineConfig({
       '/api': apiTarget,
     },
   },
+  preview: {
+    host: '0.0.0.0',
+    port: 8080,
+    allowedHosts: ['rare-adventure-production-e8d7.up.railway.app'],
+  },
 })
